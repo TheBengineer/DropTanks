@@ -153,8 +153,9 @@ def minimize_test():
         for var in x:
             tanks.append(Tank(capacity=var, stageable=True))
         tanks[-1].stageable = False
+        tanks[-1].separator_mass = 0
         masses, velocities, rocket = run_simulation(tanks)
-        print(f"Stepping with tanks: {x}: {-rocket.velocity:.2f} m/s")
+        print(f"Stepping with tanks: {x}: {rocket.velocity:.2f} m/s")
         return -rocket.velocity
 
     def mass_constraint(x):
@@ -162,7 +163,8 @@ def minimize_test():
 
     import scipy.optimize as opt
 
-    num_tanks = 2
+    num_tanks = 4
+
     initial_guess = np.array([10.0] * num_tanks)
     bounds = [(0.0, 900)] * num_tanks  # Each tank must have a minimum capacity of 10.0
 
@@ -171,7 +173,11 @@ def minimize_test():
                           bounds=bounds,
                           constraints={'type': 'ineq', 'fun': mass_constraint},
                           method='SLSQP')
-    print(f"Minimum at x = {result.x}, f(x) = {result.fun}")
+    print(f"{result.x}, {-result.fun}")
+    for i in range(len(result.x)-1):
+        ratio = result.x[i] / result.x[i+1]
+        print(ratio)
+
 
 
 if __name__ == "__main__":
