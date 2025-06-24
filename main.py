@@ -1,6 +1,7 @@
 import math
 
 import matplotlib.pyplot as plt
+import numpy as np
 
 TANK_DRY_MASS_RATIO = 0.05
 STANDARD_ISP = 300.0  # s, specific impulse of the engine
@@ -70,7 +71,6 @@ class Rocket:
     def stage(self):
         for tank in self.tanks:
             if tank.empty and tank.stageable:
-                print(f"Staging {tank.capacity} tank.")
                 self.tanks.remove(tank)
                 break
 
@@ -123,10 +123,7 @@ def run_simulation(tanks):
     my_rocket = Rocket(my_engine, tanks)
 
     simulation = Simulation(my_rocket)
-    print(f"Starting Mass: {my_rocket.mass:.2f} kg")
     simulation.run(drain_per_step=.1)
-    print(f"Final Mass: {my_rocket.mass:.2f} kg")
-    print(f"Final velocity: {my_rocket.velocity:.2f} m/s")
 
     masses = simulation.masses
     velocities = simulation.velocities
@@ -150,5 +147,32 @@ def run_and_plot():
     plot_results([[masses, velocities], [masses2, velocities2]])
 
 
+def minimize_test():
+    def objective(x):
+        tanks = []
+        for var in x:
+            tanks.append(Tank(capacity=var, stageable=True))
+        tanks[-1].stageable = False
+        masses, velocities, rocket = run_simulation(tanks)
+        print(f"Stepping with tanks: {x}: {-rocket.velocity:.2f} m/s")
+        return -rocket.velocity
+
+    def mass_constraint(x):
+        return 900 - sum(x)
+
+    import scipy.optimize as opt
+
+    num_tanks = 2
+    initial_guess = np.array([10.0] * num_tanks)
+    bounds = [(0.0, 900)] * num_tanks  # Each tank must have a minimum capacity of 10.0
+
+    result = opt.minimize(objective,
+                          x0=initial_guess,
+                          bounds=bounds,
+                          constraints={'type': 'ineq', 'fun': mass_constraint},
+                          method='SLSQP')
+    print(f"Minimum at x = {result.x}, f(x) = {result.fun}")
+
+
 if __name__ == "__main__":
-    run_and_plot()
+    minimize_test()
