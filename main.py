@@ -159,11 +159,11 @@ def minimize_test():
         return -rocket.velocity
 
     def mass_constraint(x):
-        return 900 - sum(x)
+        return 900 - (sum(x) + ((len(x) - 1) * SEPARATOR_MASS))
 
     import scipy.optimize as opt
 
-    num_tanks = 4
+    num_tanks = 3
 
     initial_guess = np.array([10.0] * num_tanks)
     bounds = [(0.0, 900)] * num_tanks  # Each tank must have a minimum capacity of 10.0
@@ -174,10 +174,9 @@ def minimize_test():
                           constraints={'type': 'ineq', 'fun': mass_constraint},
                           method='SLSQP')
     print(f"{result.x}, {-result.fun}")
-    for i in range(len(result.x)-1):
-        ratio = result.x[i] / result.x[i+1]
+    for i in range(len(result.x) - 1):
+        ratio = result.x[i] / result.x[i + 1]
         print(ratio)
-
 
 
 if __name__ == "__main__":
