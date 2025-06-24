@@ -2,9 +2,11 @@ import math
 
 import matplotlib.pyplot as plt
 
-FUEL_DENSITY = 0.8  # kg/L
-TANK_DRY_MASS_RATIO = 0.1  # Dry mass is 10% of the tank's capacity
+TANK_DRY_MASS_RATIO = 0.05
 STANDARD_ISP = 300.0  # s, specific impulse of the engine
+SHIP_DRY_MASS = 100.0  # kg, dry mass of the ship without fuel
+SEPARATOR_MASS = 7  # kg, mass of the separator for each tank
+TOTAL_SHIP_MASS = 1000.0  # kg, total mass of the ship
 
 
 def ln(x):
@@ -13,10 +15,11 @@ def ln(x):
 
 
 class Tank:
-    def __init__(self, capacity, separator_mass=1):
+    def __init__(self, capacity, stageable=True, separator_mass=SEPARATOR_MASS):
         self.capacity = capacity
         self.current_level = capacity
-        self.mass = capacity * FUEL_DENSITY + capacity * TANK_DRY_MASS_RATIO + separator_mass
+        self.stageable = bool(stageable)
+        self.mass = capacity + capacity * TANK_DRY_MASS_RATIO + separator_mass
         self.empty = False
 
     def drain(self, amount):
@@ -24,8 +27,11 @@ class Tank:
             amount = self.current_level
             self.empty = True
         self.current_level -= amount
-        self.mass -= amount * FUEL_DENSITY
+        self.mass -= amount
         return amount
+
+    def __repr__(self):
+        return f"Tank(capacity={self.capacity}, current_level={self.current_level}, mass={self.mass})"
 
 
 class Engine:
@@ -36,6 +42,9 @@ class Engine:
     def thrust_step(self, ship_mass, fuel_burned_mass):
         delta_v = self.isp * 9.81 * ln(ship_mass / (ship_mass - fuel_burned_mass))
         return delta_v
+
+    def __repr__(self):
+        return f"Engine(mass={self.mass}, isp={self.isp})"
 
 
 class Rocket:
@@ -48,21 +57,36 @@ class Rocket:
     def mass(self):
         return sum(tank.mass for tank in self.tanks) + self.engine.mass
 
+    def drain(self, amount):
+        total_drain = 0
+        for tank in self.tanks:
+            if tank.current_level > 0:
+                drained = tank.drain(amount - total_drain)
+                total_drain += drained
+                if total_drain >= amount:
+                    break
+        return total_drain
+
     def stage(self):
-        if self.tanks and self.tanks[0].empty:
-            print(f"Staging {self.tanks[0].capacity} tank.")
-            self.tanks.pop(0)
+        for tank in self.tanks:
+            if tank.empty and tank.stageable:
+                print(f"Staging {tank.capacity} tank.")
+                self.tanks.remove(tank)
+                break
 
     def burn_step(self, fuel_per_step=1):
         self.stage()
-        if not self.tanks:
-            return False
         ship_mass = self.mass
-        fuel_to_burn = self.tanks[0].drain(fuel_per_step)
-        fuel_burned_mass = fuel_to_burn * FUEL_DENSITY
+        fuel_to_burn = self.drain(fuel_per_step)
+        if fuel_to_burn <= 0:
+            return False
+        fuel_burned_mass = fuel_to_burn
         delta_v = self.engine.thrust_step(ship_mass, fuel_burned_mass)
         self.velocity += delta_v
         return True
+
+    def __repr__(self):
+        return f"Rocket(mass={self.mass}, velocity={self.velocity}, tanks={self.tanks})"
 
 
 class Simulation:
@@ -77,11 +101,15 @@ class Simulation:
             self.velocities.append(self.rocket.velocity)
             self.fuels.append(sum([tank.current_level for tank in self.rocket.tanks]))
             self.masses.append(self.rocket.mass)
-        print(f"Final velocity: {self.rocket.velocity:.2f} m/s")
+
+    def __repr__(self):
+        return f"Simulation(rocket={self.rocket}, velocities={self.velocities}, fuels={self.fuels}, masses={self.masses})"
 
 
-def plot_results(masses, velocities):
-    plt.plot(masses, velocities)
+def plot_results(data):
+    for d in data:
+        masses, velocities = d
+        plt.plot(masses, velocities)
     plt.gca().invert_xaxis()
     plt.xlabel('Mass (kg)')
     plt.ylabel('Velocity (m/s)')
@@ -89,19 +117,38 @@ def plot_results(masses, velocities):
     plt.show()
 
 
-def run_simulation():
-    my_engine = Engine(10, STANDARD_ISP)
+def run_simulation(tanks):
+    my_engine = Engine(SHIP_DRY_MASS, STANDARD_ISP)
 
-    tank1 = Tank(500, separator_mass=1)  # 1000 L tank
-    tank2 = Tank(500, separator_mass=0)  # 1000 L tank
-    my_rocket = Rocket(my_engine, [tank1, tank2])
+    my_rocket = Rocket(my_engine, tanks)
 
     simulation = Simulation(my_rocket)
+    print(f"Starting Mass: {my_rocket.mass:.2f} kg")
     simulation.run(drain_per_step=.1)
+    print(f"Final Mass: {my_rocket.mass:.2f} kg")
+    print(f"Final velocity: {my_rocket.velocity:.2f} m/s")
+
     masses = simulation.masses
     velocities = simulation.velocities
-    plot_results(masses, velocities)
+    return masses, velocities, my_rocket
+
+
+def run_and_plot():
+    tanks = [
+        Tank(capacity=400, stageable=True),
+        Tank(capacity=300, stageable=True),
+        Tank(capacity=200, stageable=False, separator_mass=0)
+    ]  # Create multiple tanks based on num_tanks
+    masses, velocities, rocket = run_simulation(tanks)
+    tanks = [
+        Tank(capacity=300, stageable=True),
+        Tank(capacity=300, stageable=True),
+        Tank(capacity=300, stageable=False, separator_mass=0)
+    ]  # Create multiple tanks based on num_tanks
+    masses2, velocities2, rocket2 = run_simulation(tanks)
+    print(rocket)
+    plot_results([[masses, velocities], [masses2, velocities2]])
 
 
 if __name__ == "__main__":
-    run_simulation()
+    run_and_plot()
