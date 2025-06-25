@@ -7,7 +7,7 @@ TANK_DRY_MASS_RATIO = 0.05
 STANDARD_ISP = 300.0  # s, specific impulse of the engine
 SHIP_DRY_MASS = 100.0  # kg, dry mass of the ship without fuel
 SEPARATOR_MASS = 7  # kg, mass of the separator for each tank
-TOTAL_SHIP_MASS = 1000.0  # kg, total mass of the ship
+TOTAL_SHIP_MASS = 10000.0  # kg, total mass of the ship
 
 
 def ln(x):
@@ -17,10 +17,10 @@ def ln(x):
 
 class Tank:
     def __init__(self, capacity, stageable=True, separator_mass=SEPARATOR_MASS):
-        self.capacity = capacity
-        self.current_level = capacity
+        self.mass = capacity + separator_mass
+        self.capacity = capacity * (1.0 - TANK_DRY_MASS_RATIO)
+        self.current_level = self.capacity
         self.stageable = bool(stageable)
-        self.mass = capacity + capacity * TANK_DRY_MASS_RATIO + separator_mass
         self.empty = False
 
     def drain(self, amount):
@@ -117,11 +117,7 @@ def plot_results(data):
     plt.show()
 
 
-def run_simulation(tanks):
-    my_engine = Engine(SHIP_DRY_MASS, STANDARD_ISP)
-
-    my_rocket = Rocket(my_engine, tanks)
-
+def run_simulation(my_rocket):
     simulation = Simulation(my_rocket)
     simulation.run(drain_per_step=.1)
 
@@ -130,21 +126,17 @@ def run_simulation(tanks):
     return masses, velocities, my_rocket
 
 
-def run_and_plot():
-    tanks = [
-        Tank(capacity=400, stageable=True),
-        Tank(capacity=300, stageable=True),
-        Tank(capacity=200, stageable=False, separator_mass=0)
-    ]  # Create multiple tanks based on num_tanks
-    masses, velocities, rocket = run_simulation(tanks)
-    tanks = [
-        Tank(capacity=300, stageable=True),
-        Tank(capacity=300, stageable=True),
-        Tank(capacity=300, stageable=False, separator_mass=0)
-    ]  # Create multiple tanks based on num_tanks
-    masses2, velocities2, rocket2 = run_simulation(tanks)
+def run_and_plot(x):
+    tanks = []
+    for var in x:
+        tanks.append(Tank(capacity=var, stageable=True))
+    tanks[-1].stageable = False
+    tanks[-1].separator_mass = 0
+    rocket = Rocket(Engine(SHIP_DRY_MASS, STANDARD_ISP), tanks)
     print(rocket)
-    plot_results([[masses, velocities], [masses2, velocities2]])
+    masses, velocities, rocket = run_simulation(rocket)
+    print(rocket)
+    plot_results([[masses, velocities], ])
 
 
 def minimize_test():
@@ -154,29 +146,32 @@ def minimize_test():
             tanks.append(Tank(capacity=var, stageable=True))
         tanks[-1].stageable = False
         tanks[-1].separator_mass = 0
-        masses, velocities, rocket = run_simulation(tanks)
+        masses, velocities, rocket = run_simulation(Rocket(Engine(SHIP_DRY_MASS, STANDARD_ISP), tanks))
         print(f"Stepping with tanks: {x}: {rocket.velocity:.2f} m/s")
         return -rocket.velocity
 
     def mass_constraint(x):
-        return 900 - (sum(x) + ((len(x) - 1) * SEPARATOR_MASS))
+        return (TOTAL_SHIP_MASS - SHIP_DRY_MASS) - (sum(x) + ((len(x) - 1) * SEPARATOR_MASS))
 
     import scipy.optimize as opt
 
-    num_tanks = 3
+    num_tanks = 10
 
     initial_guess = np.array([10.0] * num_tanks)
-    bounds = [(0.0, 900)] * num_tanks  # Each tank must have a minimum capacity of 10.0
+    bounds = [(0.0, (TOTAL_SHIP_MASS - SHIP_DRY_MASS))] * num_tanks  # Each tank must have a minimum capacity of 10.0
 
     result = opt.minimize(objective,
                           x0=initial_guess,
                           bounds=bounds,
                           constraints={'type': 'ineq', 'fun': mass_constraint},
-                          method='SLSQP')
+                          method='SLSQP',
+                          tol=.1,
+                          )
     print(f"{result.x}, {-result.fun}")
     for i in range(len(result.x) - 1):
         ratio = result.x[i] / result.x[i + 1]
         print(ratio)
+    run_and_plot(result.x)
 
 
 if __name__ == "__main__":
